@@ -127,8 +127,6 @@ def try_passwords(passwords):
             print(f"⚠️ خطأ أثناء إرسال الطلب: {e}")
             time.sleep(5)
 
-        time.sleep(2)  # إضافة مهلة 2 ثانية بين المحاولات
-
 # تحميل كلمات المرور من الملف
 passwords = load_passwords('passwordss.txt')
 
@@ -143,3 +141,5 @@ if passwords:
         time.sleep(5)  # تحديث التقدم كل 5 ثواني
 else:
     print("⚠️ لم يتم العثور على كلمات مرور لتجربتها.")
+    
+    time.sleep(2)
