@@ -57,17 +57,16 @@ def try_passwords(passwords):
             response = requests.post(url, json=data, headers=headers)
             response_json = response.json()
 
-            # تحديث التقدم
-            progress += 1
-
             # التحقق من نتيجة الطلب
             if response_json.get("code") == 200:
                 print(f"✅ تم تغيير كلمة المرور بنجاح باستخدام: {password}")
+                progress += 1  # تحديث التقدم عند النجاح
             elif response_json.get("code") in [203, 204]:
                 print("🔄 انتهت الجلسة، إعادة تسجيل الدخول...")
-                relogin()
+                relogin()  # إعادة تسجيل الدخول والحصول على توكن جديد
             else:
                 print(f"⚠️ فشل تغيير كلمة المرور. الرد: {response_json}")
+                progress += 1  # التقدم عند الفشل لتجنب تكرار نفس المحاولة
 
         except requests.exceptions.RequestException as e:
             print(f"⚠️ خطأ أثناء إرسال الطلب: {e}")
