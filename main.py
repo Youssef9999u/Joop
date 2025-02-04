@@ -14,8 +14,8 @@ is_running = True  # حالة المحاولة
 
 # التوكن الخاص بجيتهاب
 github_token = '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'
-repo_owner = 'your-github-username'
-repo_name = 'your-repo-name'
+repo_owner = 'Youssef9999u'
+repo_name = 'Joop'
 file_path = 'progress.txt'  # الملف الذي يحتوي على التقدم
 branch = 'main'
 
